@@ -3,11 +3,25 @@
 #include <zephyr/drivers/uart.h>
 
 
-
-
 #include <stdio.h>
 #include <string.h>
 
+
+// Temporary position for flash stuff
+#include <zephyr/drivers/flash.h>
+#include <zephyr/storage/flash_map.h>
+#include <zephyr/devicetree.h>
+
+#ifdef CONFIG_TRUSTED_EXECUTION_NONSECURE
+#define TEST_PARTITION	slot1_ns_partition
+#else
+#define TEST_PARTITION	slot1_partition
+#endif
+
+#define TEST_PARTITION_OFFSET	FIXED_PARTITION_OFFSET(TEST_PARTITION)
+#define TEST_PARTITION_DEVICE	FIXED_PARTITION_DEVICE(TEST_PARTITION)
+
+#define FLASH_PAGE_SIZE   4096
 
 
 
@@ -64,6 +78,11 @@ int main(void)
     unsigned char Request_Respiration_Rate[6] = {0xA1, 0x02, 0x10, 0x35, 0x45, 0xAF};
     unsigned int Respiration_Rate;
 
+    // Flash variables
+    const struct device *flash_dev = TEST_PARTITION_DEVICE;
+    uint32_t buf_word = 0U;
+	uint32_t offset;
+    uint32_t add = 0U;
 
     rc = uart_configure(uart0, &uart_cfg);
     if (rc) {
@@ -71,8 +90,18 @@ int main(void)
         return -1;
     }
 
+    // Check for flash errors
+    if (!device_is_ready(flash_dev)) {
+		printf("Flash device not ready\n");
+		return -1;
+	}
 
-
+	// Returns 0 on success
+	if (flash_erase(flash_dev, TEST_PARTITION_OFFSET, FLASH_PAGE_SIZE) != 0) {
+		printf("   Flash erase failed!\n");
+	} else {
+		printf("   Flash erase succeeded!\n");
+	}
 
     k_sleep(K_MSEC(1000));
     send_str(uart0, Board_Request_info, 5);
@@ -123,6 +152,27 @@ int main(void)
         recv_str(uart0, recv_buf);
         Pulse_Rate = (int)recv_buf[5];
 
+        // Write into flash on page 130
+        offset = TEST_PARTITION_OFFSET + (add << 2);
+        printf("   Attempted to write %x at 0x%x\n", Pulse_Rate,
+				offset);
+		if (flash_write(flash_dev, offset, &Pulse_Rate,
+					sizeof(uint32_t)) != 0) {
+			printf("   Flash write failed!\n");
+			return 0;
+		}
+		printf("   Attempted to read 0x%x\n", offset);
+		if (flash_read(flash_dev, offset, &buf_word,
+					sizeof(uint32_t)) != 0) {
+			printf("   Flash read failed!\n");
+			return 0;
+		}
+		printf("   Data read: %x\n", buf_word);
+		if (Pulse_Rate == buf_word) {
+			printf("   Data read matches data written. Good!\n");
+		} else {
+			printf("   Data read does not match data written!\n");
+		}
 
         // To request Respiration Rate:
         // SOM LEN d1 d2 CSUM EOM
@@ -132,6 +182,35 @@ int main(void)
         k_sleep(K_MSEC(100));       /* Wait for 100 ms or check uart available. */
         recv_str(uart0, recv_buf);
         Respiration_Rate = (int)recv_buf[5];
+
+        // Write into flash on page 131
+        offset = TEST_PARTITION_OFFSET + (add << 2) + 8000;
+        printf("   Attempted to write %x at 0x%x\n", Respiration_Rate,
+				offset);
+		if (flash_write(flash_dev, offset, &Respiration_Rate,
+					sizeof(uint32_t)) != 0) {
+			printf("   Flash write failed!\n");
+			return 0;
+		}
+		printf("   Attempted to read 0x%x\n", offset);
+		if (flash_read(flash_dev, offset, &buf_word,
+					sizeof(uint32_t)) != 0) {
+			printf("   Flash read failed!\n");
+			return 0;
+		}
+		printf("   Data read: %x\n", buf_word);
+		if (Respiration_Rate == buf_word) {
+			printf("   Data read matches data written. Good!\n");
+		} else {
+			printf("   Data read does not match data written!\n");
+		}
+
+        if (add >= 1999) {
+            printf("Exceeded memory");
+            return -1;
+        } else {
+            add++;
+        }
     }
 
 

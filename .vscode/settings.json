@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "kernel.h": "c",
+        "device.h": "c",
+        "devicetree.h": "c",
+        "flash.h": "c"
+    }
+}
