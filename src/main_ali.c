@@ -120,16 +120,18 @@ uint16_t request_SpO2(void){
     return((int)(recv_buff[4] << 8 | recv_buff[5]));
 }
 
-
-
-
-
 int main(void)
 {
     int rc;
     unsigned char Mfg_ID[4] = {0x19, 0xF9, 0x56, 0x14};
-    unsigned int Pulse_Rate;
-    uint16_t SpO2;
+    unsigned int Pulse_Rate, SpO2, GSR;
+    //uint16_t SpO2, GSR;
+
+    // Flash variables
+    const struct device *flash_dev = TEST_PARTITION_DEVICE;
+    uint32_t buf_word = 0U;
+	uint32_t offset;
+    uint32_t add = 0U;
 
     rc = uart_configure(uart_mx7, &uart_cfg);
     if (rc) {
@@ -137,15 +139,127 @@ int main(void)
 		return -1;
     }
 
+    // Check for flash errors
+    if (!device_is_ready(flash_dev)) {
+		printf("Flash device not ready\n");
+		return -1;
+	}
+
+	// Returns 0 on success
+	if (flash_erase(flash_dev, TEST_PARTITION_OFFSET, FLASH_PAGE_SIZE) != 0) {
+		printf("   Flash erase failed!\n");
+	} else {
+		printf("   Flash erase succeeded!\n");
+	}
+    // Returns 0 on success
+	if (flash_erase(flash_dev, TEST_PARTITION_OFFSET + (2 << 12), FLASH_PAGE_SIZE) != 0) {
+		printf("   Flash erase failed!\n");
+	} else {
+		printf("   Flash erase succeeded!\n");
+	}
+    // Returns 0 on success
+	if (flash_erase(flash_dev, TEST_PARTITION_OFFSET + (2 << 13), FLASH_PAGE_SIZE) != 0) {
+		printf("   Flash erase failed!\n");
+	} else {
+		printf("   Flash erase succeeded!\n");
+	}
+
     k_sleep(K_MSEC(1500));
 
     unlock_board(Mfg_ID);
    
     while(1) {
         Pulse_Rate = request_pulse();
-        SpO2 = request_SpO2();
 
-        printk("Pulse: %d, SpO2: %d\n", Pulse_Rate, SpO2);
+        // Write into flash on page 130
+        offset = TEST_PARTITION_OFFSET + (add << 2);
+        printf("   Attempted to write %x at 0x%x", Pulse_Rate,
+				offset);
+		if (flash_write(flash_dev, offset, &Pulse_Rate,
+					sizeof(uint32_t)) != 0) {
+			printf("   Flash write failed!");
+			return 0;
+		}
+		printf("   Attempted to read 0x%x", offset);
+		if (flash_read(flash_dev, offset, &buf_word,
+					sizeof(uint32_t)) != 0) {
+			printf("   Flash read failed!");
+			return 0;
+		}
+		printf("   Data read: %x\n", buf_word);
+		if (Pulse_Rate == buf_word) {
+			printf("   Data read matches data written. Good!\n");
+		} else {
+			printf("   Data read does not match data written!\n");
+		}
+
+        SpO2 = request_SpO2();
+        // SpO2 /= 100;
+
+        // Write into flash on page 131
+        offset = TEST_PARTITION_OFFSET + (add << 2) + (2 << 12);
+        printf("   Attempted to write %x at 0x%x", SpO2,
+				offset);
+		if (flash_write(flash_dev, offset, &SpO2,
+					sizeof(uint32_t)) != 0) {
+			printf("   Flash write failed!");
+			return 0;
+		}
+		printf("   Attempted to read 0x%x", offset);
+		if (flash_read(flash_dev, offset, &buf_word,
+					sizeof(uint32_t)) != 0) {
+			printf("   Flash read failed!");
+			return 0;
+		}
+		// printf("   Data read: %x", buf_word - 0xf9190000);
+		// if (SpO2 == buf_word - 0xf9190000) {
+		// 	printf("   Data read matches data written. Good!\n");
+		// } else {
+		// 	printf("   Data read does not match data written!\n");
+		// }
+
+        // Issue is because Sp02 is uint16 instead of 32
+        printf("   Data read: %x", buf_word);
+		if (SpO2 == buf_word) {
+			printf("   Data read matches data written. Good!\n");
+		} else {
+			printf("   Data read does not match data written!\n");
+		}
+
+        GSR = 313U;
+
+        // Write into flash on page 132
+        offset = TEST_PARTITION_OFFSET + (add << 2) + (2 << 13);
+        printf("   Attempted to write %x at 0x%x", GSR,
+				offset);
+		if (flash_write(flash_dev, offset, &GSR,
+					sizeof(uint32_t)) != 0) {
+			printf("   Flash write failed!");
+			return 0;
+		}
+		printf("   Attempted to read 0x%x", offset);
+		if (flash_read(flash_dev, offset, &buf_word,
+					sizeof(uint32_t)) != 0) {
+			printf("   Flash read failed!");
+			return 0;
+		}
+		printf("   Data read: %x\n", buf_word);
+		if (GSR == buf_word) {
+			printf("   Data read matches data written. Good!\n");
+		} else {
+			printf("   Data read does not match data written!\n");
+		}
+
+        if (add >= 1999) {
+            printf("Exceeded memory");
+            return -1;
+        } else {
+            add++;
+        }
+
+        printk("Pulse: %d, SpO2: %d, GSR: %d\n", Pulse_Rate, SpO2, GSR);
+
+        k_sleep(K_MSEC(2000));
     }
 
 

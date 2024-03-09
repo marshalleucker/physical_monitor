@@ -47,10 +47,10 @@ int main(void)
 		return 0;
 	}
 
-	printf("\nTest 1: Flash erase page at 0x%x\n", TEST_PARTITION_OFFSET);
+	printf("\nTest 1: Flash erase page at 0x%x\n", TEST_PARTITION_OFFSET + 4096);
 
 	// Returns 0 on success
-	if (flash_erase(flash_dev, TEST_PARTITION_OFFSET, FLASH_PAGE_SIZE) != 0) {
+	if (flash_erase(flash_dev, TEST_PARTITION_OFFSET + 4096, FLASH_PAGE_SIZE) != 0) {
 		printf("   Flash erase failed!\n");
 	} else {
 		printf("   Flash erase succeeded!\n");
@@ -58,7 +58,7 @@ int main(void)
 
 	printf("\nTest 2: Flash write (word array 1)\n");
 	for (i = 0U; i < ARRAY_SIZE(buf_array_1); i++) {
-		offset = TEST_PARTITION_OFFSET + (i << 2);
+		offset = TEST_PARTITION_OFFSET + (i << 2) + 4096;
 		printf("   Attempted to write %x at 0x%x\n", buf_array_1[i],
 				offset);
 		if (flash_write(flash_dev, offset, &buf_array_1[i],
@@ -164,13 +164,13 @@ int main(void)
 	}
 
 	//rc = flash_get_page_info_by_idx(flash_dev, FLASH_TEST_PAGE_IDX, &info);
-	rc = flash_get_page_info_by_offs(flash_dev, TEST_PARTITION_OFFSET + 8000 , &info);
+	rc = flash_get_page_info_by_offs(flash_dev, TEST_PARTITION_OFFSET + 4096 , &info);
 
 	if (!rc) {
 		// printf("   Page of number %u has start offset 0x%08lx\n",
 		//        FLASH_TEST_PAGE_IDX,
 		//        (unsigned long) info.start_offset);
-		printf("   Offset  0x%08x:\n", TEST_PARTITION_OFFSET + 8000);
+		printf("   Offset  0x%08x:\n", TEST_PARTITION_OFFSET + 4096);
 		printf("     belongs to the page %u of start offset 0x%08lx\n",
 		       info.index, (unsigned long) info.start_offset);
 		printf("     and size of 0x%08x B.\n", info.size);
