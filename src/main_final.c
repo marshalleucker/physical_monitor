@@ -14,11 +14,6 @@
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/bluetooth/gatt.h>
-#include <zephyr/bluetooth/services/bas.h>
-#include <zephyr/bluetooth/services/hrs.h>
-
-#include <bluetooth/gatt_dm.h>
-#include <bluetooth/scan.h>
 
 const struct device *uart_console = DEVICE_DT_GET(DT_NODELABEL(uart0));
 const struct device *uart_mx7 = DEVICE_DT_GET(DT_NODELABEL(uart1));
@@ -31,15 +26,14 @@ struct uart_config uart_cfg = {
     .data_bits = UART_CFG_DATA_BITS_8,
 };
 
-#define PDM_BT_UUID_VAL BT_UUID_128_ENCODE(0xba3fc78e,0x12ad,0x4cc6,0x8ee2,0x4ffc42f0757d)
+#define PDM_BT_UUID_VAL BT_UUID_128_ENCODE(0xba3fc78e, 0x12ad, 0x4cc6, 0x8ee2, 0x4ffc42f0757d)
 #define PDM_BT_UUID BT_UUID_DECLARE_128(PDM_BT_UUID_VAL)
 
-#define HR_BT_UUID_VAL BT_UUID_128_ENCODE(0xd3c40f85,0x0ada,0x4072,0xa155,0xfc78ce198193)
+#define HR_BT_UUID_VAL BT_UUID_128_ENCODE(0xd3c40f85, 0x0ada, 0x4072, 0xa155, 0xfc78ce198193)
 #define HR_BT_UUID BT_UUID_DECLARE_128(HR_BT_UUID_VAL)
 
-#define SP_BT_UUID_VAL BT_UUID_128_ENCODE(0x5297a449,0x5b81,0x4629,0x8a74,0x6fbd8f7a2d26)
+#define SP_BT_UUID_VAL BT_UUID_128_ENCODE(0x5297a449, 0x5b81, 0x4629, 0x8a74, 0x6fbd8f7a2d26)
 #define SP_BT_UUID BT_UUID_DECLARE_128(SP_BT_UUID_VAL)
-
 
 static const struct bt_data ad[] = {
     BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
@@ -48,67 +42,43 @@ static const struct bt_data ad[] = {
 int16_t Pulse = 0;
 int16_t SpO2 = 0;
 
+volatile bool ble_ready=false;
+
 ssize_t read_pulse(struct bt_conn *conn,
-            const struct bt_gatt_attr *attr, void *buf,
-            uint16_t len, uint16_t offset){
-                return bt_gatt_attr_read(conn,attr,buf,len,offset,&Pulse,sizeof(Pulse));
-            }
+                   const struct bt_gatt_attr *attr, void *buf,
+                   uint16_t len, uint16_t offset)
+{
+    return bt_gatt_attr_read(conn, attr, buf, len, offset, &Pulse, sizeof(Pulse));
+}
 
 BT_GATT_SERVICE_DEFINE(custom_srv,
-        BT_GATT_PRIMARY_SERVICE(PDM_BT_UUID),
-        BT_GATT_CHARACTERISTIC(HR_BT_UUID,BT_GATT_CHRC_READ,BT_GATT_PERM_READ,NULL,NULL,NULL),
-        BT_GATT_CHARACTERISTIC(SP_BT_UUID,BT_GATT_CHRC_READ,BT_GATT_PERM_READ,NULL,NULL,NULL));
+                       BT_GATT_PRIMARY_SERVICE(PDM_BT_UUID),
+                       BT_GATT_CHARACTERISTIC(HR_BT_UUID, BT_GATT_CHRC_READ, BT_GATT_PERM_READ, NULL, NULL, NULL),
+                       BT_GATT_CHARACTERISTIC(SP_BT_UUID, BT_GATT_CHRC_READ, BT_GATT_PERM_READ, NULL, NULL, NULL));
 
-static void connected(struct bt_conn *conn, uint8_t err)
+
+void bt_ready(int err)
 {
+
     if (err)
     {
-        printk("Connection failed (err 0x%02x)\n", err);
-    }
-    else
-    {
-        printk("Connected\n");
-    }
-}
-
-static void disconnected(struct bt_conn *conn, uint8_t reason)
-{
-    printk("Disconnected (reason 0x%02x)\n", reason);
-}
-
-BT_CONN_CB_DEFINE(conn_callbacks) = {
-    .connected = connected,
-    .disconnected = disconnected,
-};
-
-static void bt_ready(void)
-{
-    int err;
-
-    printk("Bluetooth initialized\n");
-
-    err = bt_le_adv_start(BT_LE_ADV_CONN_NAME, ad, ARRAY_SIZE(ad), NULL, 0);
-    if (err)
-    {
-        printk("Advertising failed to start (err %d)\n", err);
+        printk("err %d\n", err);
         return;
     }
 
     printk("Advertising successfully started\n");
+    ble_ready=true;
+}
+int init_ble(void){
+    int err;
+
+    err = bt_enable(bt_ready);
+    if(err){
+        return err;
+    }
+    return 0;
 }
 
-static void auth_cancel(struct bt_conn *conn)
-{
-    char addr[BT_ADDR_LE_STR_LEN];
-
-    bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-
-    printk("Pairing cancelled: %s\n", addr);
-}
-
-static struct bt_conn_auth_cb auth_cb_display = {
-    .cancel = auth_cancel,
-};
 
 void send_str(const struct device *uart, char *str, int msg_len)
 {
@@ -200,37 +170,44 @@ uint16_t request_SpO2(void)
 
 int main(void)
 {
-    int err;
     int rc;
     unsigned char Mfg_ID[4] = {0x19, 0xF9, 0x56, 0x14};
 
-    err = bt_enable(NULL);
-    if (err)
-    {
-        printk("Bluetooth init failed (err %d)\n", err);
+    init_ble();
+    while(!ble_ready){
+        k_msleep(100);
+    }
+
+    int err;
+    err=bt_le_adv_start(BT_LE_ADV_CONN_NAME,ad,ARRAY_SIZE(ad),NULL,0);
+    if(err){
+        printk("err %d\n", err);
         return 0;
     }
+
 
     rc = uart_configure(uart_mx7, &uart_cfg);
     if (rc)
     {
         printk("Could not configure device %s", uart_mx7->name);
-        return -1;
+        return 0;
     }
-
-    bt_ready();
-
-    bt_conn_auth_cb_register(&auth_cb_display);
 
     k_sleep(K_MSEC(1500));
 
-    unlock_board(Mfg_ID);
+   // unlock_board(Mfg_ID);
 
     while (1)
     {
-        Pulse = request_pulse();
+        //Pulse = request_pulse();
 
-        SpO2 = request_SpO2();
+        //SpO2 = request_SpO2();
+        Pulse++;
+        k_sleep(K_MSEC(1000));
+
+        if(Pulse==10){
+            Pulse=0;
+        }
         printk("Pulse: %d, SpO2: %d\n", Pulse, SpO2);
     }
 
