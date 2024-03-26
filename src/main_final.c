@@ -51,10 +51,17 @@ ssize_t read_pulse(struct bt_conn *conn,
     return bt_gatt_attr_read(conn, attr, buf, len, offset, &Pulse, sizeof(Pulse));
 }
 
+ssize_t read_spo2(struct bt_conn *conn,
+                   const struct bt_gatt_attr *attr, void *buf,
+                   uint16_t len, uint16_t offset)
+{
+    return bt_gatt_attr_read(conn, attr, buf, len, offset, &SpO2, sizeof(SpO2));
+}
+
 BT_GATT_SERVICE_DEFINE(custom_srv,
                        BT_GATT_PRIMARY_SERVICE(PDM_BT_UUID),
-                       BT_GATT_CHARACTERISTIC(HR_BT_UUID, BT_GATT_CHRC_READ, BT_GATT_PERM_READ, NULL, NULL, NULL),
-                       BT_GATT_CHARACTERISTIC(SP_BT_UUID, BT_GATT_CHRC_READ, BT_GATT_PERM_READ, NULL, NULL, NULL));
+                       BT_GATT_CHARACTERISTIC(HR_BT_UUID, BT_GATT_CHRC_READ, BT_GATT_PERM_READ, read_pulse, NULL, NULL),
+                       BT_GATT_CHARACTERISTIC(SP_BT_UUID, BT_GATT_CHRC_READ, BT_GATT_PERM_READ, read_spo2, NULL, NULL));
 
 
 void bt_ready(int err)
@@ -194,20 +201,17 @@ int main(void)
     }
 
     k_sleep(K_MSEC(1500));
-
-   // unlock_board(Mfg_ID);
+    
+    unlock_board(Mfg_ID);
 
     while (1)
     {
-        //Pulse = request_pulse();
+        Pulse = request_pulse();
 
-        //SpO2 = request_SpO2();
-        Pulse++;
+        SpO2 = request_SpO2();
+
         k_sleep(K_MSEC(1000));
 
-        if(Pulse==10){
-            Pulse=0;
-        }
         printk("Pulse: %d, SpO2: %d\n", Pulse, SpO2);
     }
 
